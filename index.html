@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Require Demo 1</title>
+</head>
+<body>
+    <div id="vse"></div>
+    <script type="text/javascript"  src="scripts/main.js"></script>
+    <script  src="scripts/require.js"></script>
+    <script type="text/javascript">
+    	require(["datatables_extends", "bootstrap"], function(tool){
+    		console.log('tool-------> ', tool);
+            var searhFields = [
+            { field: "code", dataType: "text", title: '编号'},
+            { field: "name", dataType: "text", title: '名称'},
+            { field: "type", dataType: "list", title: '类型', items: [{id: 1, text: '11'}]},
+            { field: "matter", dataType: "text", title: '合同标的'},
+            { field: "money", dataType: "number", title: '合同金额'}
+            //{ field: "counterpart.name", dataType: "text", title: '相对方'},
+            //{ field: "operateDept.name", dataType: "text", title: '经办部门'}
+        ];
+            /*var table = tool.richTable(searhFields, $("#vse"), "vse");
+            $(table).removeClass("hidden");*/
+    	});
+    </script>
+</body>
+</html>
