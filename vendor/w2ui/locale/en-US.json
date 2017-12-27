@@ -1,0 +1,18 @@
+{
+    "locale"         : "en-US",
+    "dateFormat"     : "yyyy-mm-dd",
+    "timeFormat"     : "h12",
+    "currency"       : "^[\\$]?[-+]?[0-9]*[\\.]?[0-9]+$",
+    "currencyPrefix" : "$",
+    "currencySuffix" : "",
+    "groupSymbol"    : ",",
+    "float"          : "^[-]?[0-9]*[\\.]?[0-9]+$",
+    "shortmonths"    : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "fullmonths"     : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "shortdays"      : ["M", "T", "W", "T", "F", "S","S"],
+    "fulldays"       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "phrases" : {
+        "Not a valid date": "不是有效的日期",
+        "Your remote data source record count has changed, reloading from the first record.": "远程数据源的数据条数已改变, 正在从首条数据重新加载."
+    }
+}
