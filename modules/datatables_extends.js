@@ -5,10 +5,9 @@
         define(["jquery", "searchTool"], factory);
     } else {
         // 全局模式
-        factory(jQuery);
+        factory(jQuery, SearchTool);
     }
-}(function($, Searcher, undefined) {
-    console.log('Searcher-----------> ', Searcher);
+}(function($, SearchTool, undefined) {
     $.fn.datatables_extends = function(demand, specialConfig) {
         //全局命名空间
         var PJ = {
@@ -34,7 +33,6 @@
                 [10, 15, 25, 50, "所有"]
             ],
             ajax: function(data, callback, setting) {
-                //console.log("ajax.data--> ", data);
                 var param = {};
                 param.limit = data.length; //页面显示记录条数，在页面显示每页显示多少项的时候
                 param.offset = data.start; //开始的记录序号
@@ -44,11 +42,9 @@
                 param.draw = data.draw;
                 //排序
                 var ordersInfo = getOrder(data.order, specialConfig.order, specialConfig.columns);
-                //console.log("orders.result--> ", ordersInfo);
                 if (ordersInfo.length > 0) {
                     param.sorts = JSON.stringify(ordersInfo);
                 }
-                //console.log("param.sorts--> ", param.sorts);
                 //查询过滤条件
                 var conditionsInfo = getColumnsInfo();
                 param.filters = JSON.stringify(conditionsInfo);
@@ -64,6 +60,7 @@
             config.dom = '<"#' + demand.domId + '_tool.form-inline "<"input-group col-md-2 pull-right"l>>rt<"row"<"col-md-6"i><"col-md-6"p>>';
         }
 
+
         //初始化主表
         var $tableDom = $("#" + demand.domId),
             tableHandle = $tableDom.on("draw.dt ", function(event, setting) {
@@ -77,8 +74,8 @@
                 } else {
                     $pageDiv.show();
                 }
-            }).on("init.dt", function(e, settings) { //必须在datatables完成主表的初始化，才可以增加按键
-                initDetails();
+            }).on("init.dt", function(event, settings, data) { //必须在datatables完成主表的初始化，才可以增加按键
+                initDetails({tableHandle: tableHandle, locale: demand.locale});
             }).dataTable(config);
 
         // 暴露出来的搜索功能
@@ -109,9 +106,34 @@
                         '<span  class=" input-group-addon btn-group-sm  btn btn-info btn-circle" id="' + domId + '_callSearch">' +
                         '<i class="fa fa-search"></i>&nbsp;<span style="font-size: 14px">高级搜索</span></span>';
                     //构建高级搜索组件
-                    var result = build(demand.conditions, specialConfig.columns, domId, $("#" + (demand.dsFormId || "detailsFrm")));
-                    setDsSearchBtns(domId, $modal, result.table);
-                    setGlSearchBtns(domId, searchInputId, result.searchFields);
+                    var result = build({
+                        conditions: demand.conditions,
+                        columns: specialConfig.columns,
+                        domId: domId,
+                        vessel: $("#" + (demand.dsFormId || "detailsFrm")),
+                        locale: config.locale,
+                        searchBtnEvent: function (dsTableInstance) {
+                            var $table = $(document.getElementById(dsTableInstance.getId()));
+                            if($table){
+                                $("#" + domId + "_logicType").val("and");
+                                search();
+                                $modal.on("hidden.bs.modal", function(event) {
+                                    $table.addClass("hidden"); //在模态框隐藏的时候，同时隐藏高级搜索表格
+                                }).modal('hide');
+                            }
+                        },
+                        resetBtnEvent: function (dsTableInstance) {
+                            var $table = $(document.getElementById(dsTableInstance.getId()));
+                            if($table){
+                                resetFrm(dsTableInstance.getId());
+                                $("#" + domId + "_logicType").val("and");
+                                search();
+                            }
+                        }
+                    });
+                    var dsTableId = result.table.getId();
+                    setDsSearchBtns(domId, $modal, dsTableId);
+                    setGlSearchBtns(domId, searchInputId, result.searchFields, dsTableId);
                 } else {
                     $searchDom[0].innerHTML = '<input class="form-control input-sm " id="' + searchInputId + '" type="text"><span class="input-group-addon btn btn-primary btn-sm" id="' + domId + '_query">' +
                         '<i class="fa fa-search"></i>&nbsp;<span style="font-size: 14px">搜索</span>' +
@@ -128,24 +150,37 @@
          * @param conditions 搜索条件
          * @param columns 列信息
          * @param domId 主表格id
-         * @param $vessel 容器,jquery对象
+         * @param vessel 容器,jquery对象
+         * @param tableHandle datatables实例
          * @returns {*}
          */
-        function build(conditions, columns, domId, $vessel) {
-            var tableId = domId + '_ds',
+        function build(args) {
+            var tableId = args.domId + '_ds',
                 table = document.getElementById(tableId);
-            //console.log("容器存在吗？--> ", $form);
             if (table === null) {
-                if (conditions) {
-                    table = Searcher.richTable(conditions, $vessel, domId);
+                if (args.conditions) {
+                    table = new SearchTool({
+                        searchFields: args.conditions,
+                        searchBtnEvent: args.searchBtnEvent,
+                        resetBtnEvent: args.resetBtnEvent,
+                        locale: args.locale,
+                        vessel: args.vessel,
+                        id: tableId
+                    });
                     return {
                         table: table,
-                        searchFields: conditions
+                        searchFields: args.conditions
                     };
                 } else {
-                    var searchFields = getSearchFields(columns);
-                    console.log("build.searchFields--> ", searchFields);
-                    table = Searcher.richTable(searchFields, $vessel, domId);
+                    var searchFields = getSearchFields(args.columns);
+                    table = new SearchTool({
+                        searchFields: searchFields,
+                        searchBtnEvent: args.searchBtnEvent,
+                        resetBtnEvent: args.resetBtnEvent,
+                        locale: args.locale,
+                        vessel: args.vessel,
+                        id: tableId
+                    });
                     return {
                         table: table,
                         searchFields: searchFields
@@ -190,10 +225,11 @@
         /**
          * 设置模糊搜索的按钮，有高级搜索时
          * @param domId
-         * @param searchInputId
-         * @param searchFields
+         * @param searchInputId 模糊搜索输入框id
+         * @param searchFields 搜索条件
+         * @param dsTableId 高级搜索的表格id
          */
-        function setGlSearchBtns(domId, searchInputId, searchFields) {
+        function setGlSearchBtns(domId, searchInputId, searchFields, dsTableId) {
             var $searchInput = $(document.getElementById(searchInputId)),
                 value = $searchInput.val();
             //模糊搜索
@@ -210,8 +246,8 @@
             //清空模糊搜索
             $("#" + domId + "_reset").on("click", function() {
                 $searchInput.val("");
-                //清空当前表格的搜索条件
-                resetFrm(domId + "_ds");
+                //清空当前高级搜索表格的搜索条件
+                resetFrm(dsTableId);
                 search();
             });
         }
@@ -228,19 +264,18 @@
 
             //模糊搜索
             $searchBtn.on("click", function() {
-                simpleSearch(domId);
+                simpleSearch(domId + "_ds");//增加“_ds”， 是因为之前生成高级搜索器时，使用的初始id=domId + "_ds"
             });
 
             $searchInput.keydown(function(event) {
                 if (event.which == 13) {
-                    simpleSearch(domId);
+                    simpleSearch(domId + "_ds");
                 }
             });
 
             //清空模糊搜索
             $("#" + domId + "_reset").on("click", function() {
                 $searchInput.val("");
-                console.log("99999--> ", 99999);
                 //清空当前表格的搜索条件
                 $searchBtn.trigger("click");
                 search();
@@ -251,30 +286,16 @@
          *  设置高级搜索用的按钮
          * @param domId
          * @param $modal
-         * @param table
+         * @param dsTableId
          */
-        function setDsSearchBtns(domId, $modal, table) {
-            var $table = $(table);
+        function setDsSearchBtns(domId, $modal, dsTableId) {
+            var $table = $(document.getElementById(dsTableId));
             //click唤醒高级搜索模态框
             $("#" + domId + "_callSearch").on("click", function() {
+                console.log("$table--> ", $table);
                 //显示目标高级搜索表格
                 $table.removeClass("hidden");
                 $modal.modal('show');
-            });
-
-            //高级搜索
-            $("#" + domId + "_dsSearch").on("click", function() {
-                //设置逻辑连接符
-                $("#" + domId + "_logicType").val("and");
-                search();
-                $modal.on("hidden.bs.modal", function(event) {
-                    $table.addClass("hidden"); //在模态框隐藏的时候，同时隐藏高级搜索表格
-                }).modal('hide');
-            });
-
-            //清空
-            $("#" + domId + "_dsReset").on("click", function() {
-                resetFrm(domId + "_ds");
             });
         }
 
@@ -283,14 +304,14 @@
         function syncDetail(conditions, domId, value) {
             console.log("syncDetail.conditions--> ", conditions);
             var detailsTable = document.getElementById(domId + "_ds");
-            //console.log("detailsTable--> ", detailsTable);
+            console.log("detailsTable--> ", detailsTable);
             //console.log("syncDetail.value--> ", value);
             //存在高级搜索，同步搜索条件
             if (detailsTable) {
                 conditions.forEach(function(e, i) {
                     var dataType = e.dataType,
                         field = e.field,
-                        idBody = field + "_" + domId;
+                        idBody = field + "_" + domId + "_ds";
                     //console.log("idBody--> ", idBody);
                     if (dataType === "text") {
                         if (value !== null && value !== "") {
@@ -311,11 +332,11 @@
 
         /**
          * 不存在高级搜索的情况，使用
-         * @param domId
+         * @param searchTableId
          */
-        function simpleSearch(domId) {
+        function simpleSearch(searchTableId) {
             //设置逻辑连接符为or
-            $("#" + domId + "_logicType").val("or");
+            $("#" + searchTableId + "_logicType").val("or");
             search();
         }
 
@@ -323,7 +344,7 @@
         function complexSearch(searchFields, domId, val) {
             //设置搜索条件
             syncDetail(searchFields, domId, val);
-            simpleSearch(domId);
+            simpleSearch(domId + "_ds");//使用高级搜索器的id
         }
 
 
@@ -363,21 +384,12 @@
                     }
                 });
             }
-
             return colInfo;
         }
 
         //获取各搜索条件
         function getColumnsInfo() {
-            var colInfo = [],
-                defaultInfo = demand.searchInfo;
-            /*//加入初始过滤条件,初始过滤条的逻辑连接词是and
-            if (defaultInfo !== undefined && defaultInfo.length > 0) {
-                colInfo = defaultInfo.filter(function (e) {
-                    return e.value !== "" && e.value !== null;
-                });
-            }*/
-            //console.log("colInfo--> ", colInfo);
+            var defaultInfo = demand.searchInfo;
             var conditions = demand.conditions;
             if (demand.detailSearch) {
                 //取得高级搜索的条件
@@ -387,41 +399,23 @@
                 } else {
                     searchFields = conditions;
                 }
-                searchFields.forEach(function(e, i) {
-                    var field = e.field,
-                        idbody = field + "_" + demand.domId,
-                        value = $(document.getElementById(idbody + "_in")).val(),
-                        operation = $(document.getElementById(idbody)).val();
-                    //console.log("value--> ", value);
-                    if (value !== null && value !== "" && value !== undefined) {
-                        if (operation == "between") { //范围选择
-                            var endValue = $(document.getElementById(idbody + "_end")).val();
-                            if (endValue !== null && endValue !== "" && endValue !== undefined) {
-                                colInfo.push({
-                                    operation: operation,
-                                    field: field,
-                                    value: value > endValue ? value + "," + endValue : endValue + "," + value
-                                });
-                            }
-                        } else {
-                            colInfo.push({
-                                operation: operation,
-                                field: field,
-                                value: value
-                            });
+                var searcher = SearchTool.getSearcher(demand.domId + "_ds");
+                if(searcher !== undefined){//高级搜索器是否已经初始化完毕
+                    return {
+                        manualFilters: searcher.getSearchInfo(),
+                        defFilters: {
+                            colInfo: defaultInfo,
+                            logicType: "and"
+                        }
+                    };
+                }else{
+                    return {
+                        defFilters: {
+                            colInfo: defaultInfo,
+                            logicType: "and"
                         }
                     }
-                });
-                return {
-                    manualFilters: {
-                        colInfo: colInfo,
-                        logicType: $("#" + demand.domId + "_logicType").val() || "and"
-                    },
-                    defFilters: {
-                        colInfo: defaultInfo,
-                        logicType: "and"
-                    }
-                };
+                }
             } else {
                 return {
                     manualFilters: {
@@ -434,52 +428,6 @@
                     }
                 }
             }
-        }
-
-
-        //获取各搜索条件,存在高级搜索时使用
-        //组装一个结构，包含过滤（过滤字段field、操作符operation）、排序(order)
-        function getDsColumnsInfo(conditions, defaultInfo, tableId) {
-            console.log("colInfo.conditions--> ", conditions);
-            var colInfo = [];
-
-            //加入初始过滤条件
-            if (defaultInfo !== undefined && defaultInfo.length > 0) {
-                colInfo = defaultInfo.filter(function(e) {
-                    return e.value !== "" && e.value !== null;
-                });
-            }
-
-            //取得高级搜索的条件
-            conditions.forEach(function(e, i) {
-                var field = e.field,
-                    idbody = field + "_" + tableId,
-                    value = $(document.getElementById(idbody + "_in")).val(),
-                    operation = $(document.getElementById(idbody)).val();
-                //console.log("value--> ", value);
-                if (value !== null && value !== "" && value !== undefined) {
-                    if (operation == "between") { //范围选择
-                        var endValue = $(document.getElementById(idbody + "_end")).val();
-                        if (endValue !== null && endValue !== "" && endValue !== undefined) {
-                            colInfo.push({
-                                operation: operation,
-                                field: field,
-                                value: value > endValue ? value + "," + endValue : endValue + "," + value
-                            });
-                        }
-                    } else {
-                        colInfo.push({
-                            operation: operation,
-                            field: field,
-                            value: value
-                        });
-                    }
-                }
-            });
-            return {
-                colInfo: colInfo,
-                logicType: $("#" + tableId + "_logicType").val()
-            };
         }
 
         //得到排序信息
